@@ -1,4 +1,4 @@
-from hashlib import md5 as encrypt, sha1
+from hashlib import md5 as encrypt
 from hmac import new
 
 
