@@ -36,6 +36,7 @@ Description=srun login
 Type=simple
 User=root
 ExecStart=python3 /path/to/your/file.py
+WorkingDirectory=/path/to/your/dir
 
 [Install]
 WantedBy=multi-user.target
