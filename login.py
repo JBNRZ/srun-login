@@ -174,7 +174,7 @@ def check():
 def main():
     logger.remove()
     logger.add(
-        "srun_login.log", rotation="10 MB",
+        "srun_login.log", rotation="10 MB", level="DEBUG",
         format="<g>{time:MM-DD HH:mm:ss}</g> [<lvl>{level}</lvl>] <c><u>srun_login</u></c> | {message}"
     )
     logger.add(
