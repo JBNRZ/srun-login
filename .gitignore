@@ -1,0 +1,6 @@
+__pycache__/
+venv/
+.idea/
+
+*.log
+auth.json
