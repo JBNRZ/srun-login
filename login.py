@@ -184,6 +184,7 @@ def main():
     scheduler = BlockingScheduler()
     scheduler.add_job(refresh, 'interval', hours=12)
     scheduler.add_job(check, 'interval', minutes=5)
+    logger.info("Process started")
     scheduler.start()
 
 
