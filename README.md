@@ -26,6 +26,21 @@ EOF
 nohup python3 login.py &
 ```
 
+## 配置开机自启
+
+```yaml
+[Unit]
+Description=srun login
+
+[Service]
+Type=simple
+User=root
+ExecStart=python3 /path/to/your/file.py
+
+[Install]
+WantedBy=multi-user.target
+```
+
 ## License
 
 MIT License
