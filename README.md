@@ -17,8 +17,8 @@ cd srun-login && pip3 install -r requirements.txt
 cat<<EOF>auth.json
 [
   {"username": "你的学号", "password": "你的密码"},
-  {"username": "你的学号", "password": "你的密码"},
-  {"username": "你的学号", "password": "你的密码"} 
+  {"username": "她的学号", "password": "她的密码"},
+  {"username": "他的学号", "password": "他的密码"} 
 ]
 EOF
 
