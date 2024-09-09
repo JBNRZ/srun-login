@@ -30,19 +30,29 @@ class Manager(Session):
         self.enc_ver: str = "srun_bx1"
         self.username = username
         self.password = password
-        self.hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
+        self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
         self.logger = logger
     
+    def get_host(self):
+        hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
+        for i in hosts:
+            try:
+                self.get(i)
+                return i
+            except Exception as e:
+                self.logger.info(f"Host {i} {e}")
+        self.logger.error("Failed to get host...")
+        exit(1)
+    
     def get_ip(self) -> str:
-        resp = self.get(self.hosts[self.acid] + f"/srun_portal_pc?ac_id={self.acid}&theme=pro", headers=headers).text
+        resp = self.get(self.host + f"/srun_portal_pc", headers=headers).text
         try:
             ip = compile(r'((1\d{2}|25[0-5]|2[0-4]\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)').search(
                 resp).group()
         except AttributeError:
-            self.acid ^= 1
+            self.logger.error("Failed to get IP")
             ip = self.get_ip()
-        self.logger.error("Failed to get IP")
         return ip
     
     def get_token(self) -> str:
@@ -53,9 +63,11 @@ class Manager(Session):
             "ip": self.get_ip(),
             "_": round(time() * 1000)
         }
-        resp = self.get(self.hosts[self.acid] + "/cgi-bin/get_challenge", headers=headers, params=params).text
-        token = loads(resp.strip(callback + "()"))["challenge"]
-        self.logger.error("Failed to get token")
+        resp = self.get(self.host + "/cgi-bin/get_challenge", headers=headers, params=params).text.strip(
+            callback + "()")
+        self.logger.debug(resp)
+        token = loads(resp)["challenge"]
+        self.logger.info(f"Token: {token}")
         return token
     
     def get_info(self) -> str:
@@ -99,17 +111,20 @@ class Manager(Session):
             "type": self.vtype,
             "_": round(time() * 1000)
         }
-        resp = self.get(self.hosts[self.acid] + "/cgi-bin/srun_portal", headers=headers, params=params).text
+        resp = self.get(self.host + "/cgi-bin/srun_portal", headers=headers, params=params).text
         result: dict = loads(resp.strip(callback + "()"))
         self.logger.debug(result)
         if result.get("suc_msg"):
             self.logger.success(f'login: {result["suc_msg"]}')
         else:
-            self.logger.error(f'login: {result.get("error")}')
-            self.acid ^= 1
+            self.logger.error(f'{result.get("error")}: {result.get("error_msg")}')
+            if "BAS" in result.get("error_msg") or "Nas" in result.get("error_msg"):
+                self.logger.error("ac_id error, retry in 5 seconds...")
+                self.acid += 1
+            sleep(5)
             result = self.login()
         return result
-            
+    
     def logout(self) -> dict:
         callback = f"jQuery112405185119642573086_{round(time() * 1000)}"
         t = round(time())
@@ -125,25 +140,25 @@ class Manager(Session):
             "sign": sha1(f"{t}{username}{ip}1{t}".encode()).hexdigest(),
             "_": round(time() * 1000)
         }
-        resp = self.get(self.hosts[self.acid] + "/cgi-bin/rad_user_dm", headers=headers, params=params).text
+        resp = self.get(self.host + "/cgi-bin/rad_user_dm", headers=headers, params=params).text
         result: dict = loads(resp.strip(callback + "()"))
         self.logger.debug(result)
         self.logger.info(f'logout: {result.get("error")}')
         return result
-        
+    
     def check(self) -> dict:
         callback = f"jQuery112405185119642573086_{round(time() * 1000)}"
         params = {
             "callback": callback,
             "_": round(time() * 1000)
         }
-        resp = self.get(self.hosts[self.acid] + "/cgi-bin/rad_user_info", headers=headers, params=params).text
+        resp = self.get(self.host + "/cgi-bin/rad_user_info", headers=headers, params=params).text
         result: dict = loads(resp.strip(callback + "()"))
         self.logger.debug(result)
         self.logger.info(f'check: {result.get("error")}')
         return result
-    
-    
+
+
 def refresh():
     logger.info("Try to refresh...")
     try:
@@ -155,8 +170,8 @@ def refresh():
         manager.login()
     except Exception as e:
         logger.bind(module="srun_login").error(f"{e}, please check auth.json")
-        
-        
+
+
 def check():
     logger.info("Check status...")
     try:
@@ -170,7 +185,7 @@ def check():
     except Exception as e:
         logger.bind(module="srun_login").error(f"{e}, please check auth.json")
 
-    
+
 def main():
     logger.remove()
     logger.add(
