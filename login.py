@@ -31,7 +31,6 @@ class Manager(Session):
         self.username = username
         self.password = password
         self.logger = logger
-        self.i = 0
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
     
