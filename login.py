@@ -31,17 +31,24 @@ class Manager(Session):
         self.username = username
         self.password = password
         self.logger = logger
+        self.i = 0
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
     
+    # 成功登陆后优先尝试上次的host
     def get_host(self):
         hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
-        for i in hosts:
-            try:
-                self.get(i)
-                return i
-            except Exception as e:
-                self.logger.info(f"Host {i} {e}")
+        try:
+            self.get(hosts[self.i])
+            return hosts[self.i]
+        except Exception as e:
+            self.logger.info(f"Host {hosts[self.i]} {e}")
+        self.i ^= 1
+        try:
+            self.get(hosts[self.i])
+            return hosts[self.i]
+        except Exception as e:
+            self.logger.info(f"Host {hosts[self.i]} {e}")
         self.logger.error("Failed to get host...")
         exit(1)
     
