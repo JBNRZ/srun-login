@@ -30,9 +30,9 @@ class Manager(Session):
         self.enc_ver: str = "srun_bx1"
         self.username = username
         self.password = password
+        self.logger = logger
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
-        self.logger = logger
     
     def get_host(self):
         hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
