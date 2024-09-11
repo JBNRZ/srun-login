@@ -22,7 +22,7 @@ headers = {
 
 class Manager(Session):
     
-    def __init__(self, username: str, password: str):
+    def __init__(self, username: str = "", password: str = ""):
         super().__init__()
         self.acid: int = 0
         self.n: str = "200"
@@ -35,20 +35,14 @@ class Manager(Session):
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
     
-    # 成功登陆后优先尝试上次的host
     def get_host(self):
         hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
-        try:
-            self.get(hosts[self.i])
-            return hosts[self.i]
-        except Exception as e:
-            self.logger.info(f"Host {hosts[self.i]} {e}")
-        self.i ^= 1
-        try:
-            self.get(hosts[self.i])
-            return hosts[self.i]
-        except Exception as e:
-            self.logger.info(f"Host {hosts[self.i]} {e}")
+        for i in hosts:
+            try:
+                self.get(i)
+                return i
+            except Exception as e:
+                self.logger.info(f"Host {i} {e}")
         self.logger.error("Failed to get host...")
         exit(1)
     
@@ -182,12 +176,12 @@ def refresh():
 def check():
     logger.info("Check status...")
     try:
-        auths = load(open("auth.json", "r", encoding="utf-8"))
-        auth = choice(auths)
-        manager = Manager(auth["username"], auth["password"])
+        manager = Manager()
         status = manager.check()
         if status.get("error") != "ok":
             logger.warning(f"{status.get('error')}, try to login...")
+            auth = choice(load(open("auth.json", "r", encoding="utf-8")))
+            manager.username, manager.password = auth["username"], auth["password"]
             manager.login()
     except Exception as e:
         logger.bind(module="srun_login").error(f"{e}, please check auth.json")
@@ -205,7 +199,7 @@ def main():
     )
     scheduler = BlockingScheduler()
     scheduler.add_job(refresh, 'interval', hours=12)
-    scheduler.add_job(check, 'interval', minutes=5)
+    scheduler.add_job(check, 'interval', minutes=1)
     logger.info("Process started")
     scheduler.start()
 
