@@ -197,8 +197,8 @@ def main():
         format="<g>{time:MM-DD HH:mm:ss}</g> [<lvl>{level}</lvl>] <c><u>srun_login</u></c> | {message}"
     )
     scheduler = BlockingScheduler()
-    scheduler.add_job(refresh, 'interval', hours=12)
-    scheduler.add_job(check, 'interval', minutes=1)
+    scheduler.add_job(refresh, 'interval', hours=6)
+    scheduler.add_job(check, 'interval', minutes=2)
     logger.info("Process started")
     scheduler.start()
 
