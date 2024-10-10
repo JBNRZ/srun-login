@@ -1,3 +1,4 @@
+from datetime import datetime
 from hashlib import sha1
 from json import loads, dumps, load
 from random import choice
@@ -198,7 +199,7 @@ def main():
     )
     scheduler = BlockingScheduler()
     scheduler.add_job(refresh, 'interval', hours=6)
-    scheduler.add_job(check, 'interval', minutes=2)
+    scheduler.add_job(check, 'interval', minutes=2, next_run_time=datetime.now())
     logger.info("Process started")
     scheduler.start()
 
