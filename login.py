@@ -19,10 +19,11 @@ headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 "
                   " Safari/537.36 Edg/128.0.0.0"
 }
+auths = []
 
 
 class Manager(Session):
-    
+
     def __init__(self, username: str = "", password: str = ""):
         super().__init__()
         self.acid: int = 0
@@ -34,7 +35,7 @@ class Manager(Session):
         self.logger = logger
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
-    
+
     def get_host(self):
         hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
         for i in hosts:
@@ -44,8 +45,8 @@ class Manager(Session):
             except Exception as e:
                 self.logger.info(f"Host {i} {e}")
         self.logger.error("Failed to get host...")
-        exit(1)
-    
+        exit(-1)
+
     def get_ip(self) -> str:
         resp = self.get(self.host + f"/srun_portal_pc", headers=headers).text
         try:
@@ -55,7 +56,7 @@ class Manager(Session):
             self.logger.error("Failed to get IP")
             ip = self.get_ip()
         return ip
-    
+
     def get_token(self) -> str:
         callback = f"jQuery1124015280105355320628_{round(time() * 1000)}"
         params = {
@@ -70,7 +71,7 @@ class Manager(Session):
         token = loads(resp)["challenge"]
         self.logger.info(f"Token: {token}")
         return token
-    
+
     def get_info(self) -> str:
         return "{SRBX1}" + b64encode(xencode(dumps({
             "username": self.username,
@@ -79,7 +80,7 @@ class Manager(Session):
             "acid": str(self.acid),
             "enc_ver": self.enc_ver,
         }), self.token))
-    
+
     def get_checksum(self) -> str:
         checksum = self.token + self.username
         checksum += self.token + md5(self.password, self.token)
@@ -89,7 +90,7 @@ class Manager(Session):
         checksum += self.token + self.vtype
         checksum += self.token + self.info
         return sha1(checksum.encode()).hexdigest()
-    
+
     def login(self) -> dict:
         self.token = self.get_token()
         self.info = self.get_info()
@@ -116,16 +117,33 @@ class Manager(Session):
         result: dict = loads(resp.strip(callback + "()"))
         self.logger.debug(result)
         if result.get("suc_msg"):
-            self.logger.success(f'login: {result["suc_msg"]}')
+            self.logger.success(f'login: {result["suc_msg"]} {self.username} {self.password} {result.get("online_ip")}')
         else:
             self.logger.error(f'{result.get("error")}: {result.get("error_msg")}')
             if "BAS" in result.get("error_msg") or "Nas" in result.get("error_msg"):
+                """
+                INFO failed, BAS respond timeout.
+                Nas type not found.
+                """
                 self.logger.error("ac_id error, retry in 5 seconds...")
                 self.acid += 1
-            sleep(5)
-            result = self.login()
+                sleep(5)
+                result = self.login()
+            elif "E2901" in result.get("error_msg"):
+                """
+                E2901: (Third party -200)ldap_first_entry error
+                E2901: (Third party 1)bind_user2: ldap_bind error
+                """
+                self.logger.error("username or password error...")
+                result["error_msg"] = "4xx"
+            elif "E2606" in result.get("error_msg"):
+                """
+                E2606: User is disabled.
+                """
+                self.logger.error("user is disabled...")
+                result["error_msg"] = "4xx"
         return result
-    
+
     def logout(self) -> dict:
         callback = f"jQuery112405185119642573086_{round(time() * 1000)}"
         t = round(time())
@@ -146,7 +164,7 @@ class Manager(Session):
         self.logger.debug(result)
         self.logger.info(f'logout: {result.get("error")}')
         return result
-    
+
     def check(self) -> dict:
         callback = f"jQuery112405185119642573086_{round(time() * 1000)}"
         params = {
@@ -161,33 +179,41 @@ class Manager(Session):
 
 
 def refresh():
-    logger.info("Try to refresh...")
-    try:
-        auths = load(open("auth.json", "r", encoding="utf-8"))
-        auth = choice(auths)
-        manager = Manager(auth["username"], auth["password"])
-        manager.logout()
-        sleep(2)
-        manager.login()
-    except Exception as e:
-        logger.bind(module="srun_login").error(f"{e}, please check auth.json")
+    global auths
+    logger.debug("Try to refresh...")
+    auth = choice(auths)
+    manager = Manager(auth["username"], auth["password"])
+    manager.logout()
+    failed = True
+    while failed:
+        result = manager.login()
+        failed = True if result.get("error_msg") == "4xx" else False
+        if failed:
+            auth = choice(auths)
+            manager.username, manager.password = auth["username"], auth["password"]
+            logger.debug(f"username or password is incorrect, retry in 2 seconds...")
+            sleep(2)
 
 
 def check():
-    logger.info("Check status...")
-    try:
-        manager = Manager()
-        status = manager.check()
-        if status.get("error") != "ok":
-            logger.warning(f"{status.get('error')}, try to login...")
-            auth = choice(load(open("auth.json", "r", encoding="utf-8")))
+    global auths
+    logger.debug("Check status...")
+    manager = Manager()
+    status = manager.check()
+    if status.get("error") != "ok":
+        logger.warning(f"{status.get('error')}, try to login...")
+        failed = True
+        while failed:
+            auth = choice(auths)
             manager.username, manager.password = auth["username"], auth["password"]
-            manager.login()
-    except Exception as e:
-        logger.bind(module="srun_login").error(f"{e}, please check auth.json")
+            failed = True if manager.login().get("error_msg") == "4xx" else False
+            if failed:
+                logger.debug(f"username or password is incorrect, retry in 2 seconds...")
+                sleep(2)
 
 
 def main():
+    global auths
     logger.remove()
     logger.add(
         "srun_login.log", rotation="10 MB", level="DEBUG",
@@ -197,6 +223,11 @@ def main():
         stdout, level="INFO",
         format="<g>{time:MM-DD HH:mm:ss}</g> [<lvl>{level}</lvl>] <c><u>srun_login</u></c> | {message}"
     )
+    try:
+        auths = load(open("auth.json", "r", encoding="utf-8"))
+    except Exception as e:
+        logger.bind(module="srun_login").error(f"{e}, please check auth.json")
+        exit(-1)
     scheduler = BlockingScheduler()
     scheduler.add_job(refresh, 'interval', hours=6)
     scheduler.add_job(check, 'interval', minutes=2, next_run_time=datetime.now())
