@@ -37,7 +37,9 @@ class Manager(Session):
         self.token, self.checksum, self.info = None, None, None
 
     def get_host(self):
-        hosts = ["https://login.hdu.edu.cn", "https://portal.hdu.edu.cn"]
+        hosts = [
+            "https://login.hdu.edu.cn", "https://portal.hdu.edu.cn", "http://192.168.112.30", "http://192.168.112.97"
+        ]
         for i in hosts:
             try:
                 self.get(i)
