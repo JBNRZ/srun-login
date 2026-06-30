@@ -15,6 +15,10 @@ from utils.device import devices
 from utils.hash import md5
 from utils.xencode import xencode
 
+AUTH_FILE = "auth.json"
+INVALID_AUTH_ERROR = "4xx"
+RETRY_DELAY = 2
+
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 "
                   " Safari/537.36 Edg/128.0.0.0"
@@ -181,41 +185,44 @@ class Manager(Session):
 
 
 def refresh():
-    global auths
     logger.debug("Try to refresh...")
-    auth = choice(auths)
-    manager = Manager(auth["username"], auth["password"])
+    manager = Manager(*get_random_auth())
     manager.logout()
-    failed = True
-    while failed:
-        result = manager.login()
-        failed = True if result.get("error_msg") == "4xx" else False
-        if failed:
-            auth = choice(auths)
-            manager.username, manager.password = auth["username"], auth["password"]
-            logger.debug(f"username or password is incorrect, retry in 2 seconds...")
-            sleep(2)
+    retry_login(manager)
 
 
 def check():
-    global auths
     logger.debug("Check status...")
     manager = Manager()
     status = manager.check()
     if status.get("error") != "ok":
         logger.warning(f"{status.get('error')}, try to login...")
-        failed = True
-        while failed:
-            auth = choice(auths)
-            manager.username, manager.password = auth["username"], auth["password"]
-            failed = True if manager.login().get("error_msg") == "4xx" else False
-            if failed:
-                logger.debug(f"username or password is incorrect, retry in 2 seconds...")
-                sleep(2)
+        retry_login(manager, refresh_auth_before_login=True)
 
 
-def main():
-    global auths
+def get_random_auth():
+    auth = choice(auths)
+    return auth["username"], auth["password"]
+
+
+def set_random_auth(manager: Manager):
+    manager.username, manager.password = get_random_auth()
+
+
+def retry_login(manager: Manager, refresh_auth_before_login: bool = False):
+    while True:
+        if refresh_auth_before_login:
+            set_random_auth(manager)
+        result = manager.login()
+        if result.get("error_msg") != INVALID_AUTH_ERROR:
+            return result
+        if not refresh_auth_before_login:
+            set_random_auth(manager)
+        logger.debug(f"username or password is incorrect, retry in {RETRY_DELAY} seconds...")
+        sleep(RETRY_DELAY)
+
+
+def setup_logger():
     logger.remove()
     logger.add(
         "srun_login.log", rotation="10 MB", level="DEBUG",
@@ -225,16 +232,30 @@ def main():
         stdout, level="INFO",
         format="<g>{time:MM-DD HH:mm:ss}</g> [<lvl>{level}</lvl>] <c><u>srun_login</u></c> | {message}"
     )
+
+
+def load_auths():
     try:
-        auths = load(open("auth.json", "r", encoding="utf-8"))
+        with open(AUTH_FILE, "r", encoding="utf-8") as file:
+            return load(file)
     except Exception as e:
-        logger.bind(module="srun_login").error(f"{e}, please check auth.json")
+        logger.bind(module="srun_login").error(f"{e}, please check {AUTH_FILE}")
         exit(-1)
+
+
+def start_scheduler():
     scheduler = BlockingScheduler()
     scheduler.add_job(refresh, 'interval', hours=6)
     scheduler.add_job(check, 'interval', minutes=2, next_run_time=datetime.now())
     logger.info("Process started")
     scheduler.start()
+
+
+def main():
+    global auths
+    setup_logger()
+    auths = load_auths()
+    start_scheduler()
 
 
 if __name__ == "__main__":
