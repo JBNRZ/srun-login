@@ -44,8 +44,6 @@ class Manager(Session):
         self.password = password
         self.logger = logger
         self.host = self.get_host()
-        if urlsplit(self.host).hostname == "yue.hdu.edu.cn":
-            self.acid = 1
         self.token, self.checksum, self.info = None, None, None
 
     @staticmethod
