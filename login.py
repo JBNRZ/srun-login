@@ -1,10 +1,12 @@
 from datetime import datetime
 from hashlib import sha1
+from html import unescape
 from json import loads, dumps, load
 from random import choice
-from re import compile
+from re import IGNORECASE, compile
 from sys import stdout
 from time import time, sleep
+from urllib.parse import urljoin, urlsplit
 
 from apscheduler.schedulers.blocking import BlockingScheduler
 from loguru import logger
@@ -18,6 +20,10 @@ from utils.xencode import xencode
 AUTH_FILE = "auth.json"
 INVALID_AUTH_ERROR = "4xx"
 RETRY_DELAY = 2
+PORTAL_HOSTS = [
+    "https://login.hdu.edu.cn", "https://portal.hdu.edu.cn",
+    "http://192.168.112.30", "http://192.168.112.97", "https://yue.hdu.edu.cn"
+]
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 "
@@ -40,16 +46,45 @@ class Manager(Session):
         self.host = self.get_host()
         self.token, self.checksum, self.info = None, None, None
 
+    @staticmethod
+    def get_redirect_host(response):
+        urls = [response.url] + [previous.url for previous in reversed(response.history)]
+        for tag in compile(r"<meta\b[^>]*>", flags=IGNORECASE).findall(response.text):
+            if not compile(r'''http-equiv\s*=\s*["']?refresh\b''', flags=IGNORECASE).search(tag):
+                continue
+            content = compile(r'''content\s*=\s*["']([^"']+)["']''', flags=IGNORECASE).search(tag)
+            if content:
+                target = compile(r"\burl\s*=\s*(.+)", flags=IGNORECASE).search(content.group(1))
+                if target:
+                    urls.insert(0, urljoin(response.url, unescape(target.group(1).strip())))
+        for url in urls:
+            parsed = urlsplit(url)
+            if parsed.scheme not in ("http", "https"):
+                continue
+            for host in PORTAL_HOSTS:
+                if parsed.hostname == urlsplit(host).hostname:
+                    return host
+        return None
+
     def get_host(self):
-        hosts = [
-            "https://login.hdu.edu.cn", "https://portal.hdu.edu.cn", "http://192.168.112.30", "http://192.168.112.97"
-        ]
-        for i in hosts:
+        try:
+            response = self.get("http://www.msftconnecttest.com/connecttest.txt", timeout=10)
+            host = self.get_redirect_host(response)
+            if host:
+                return host
+        except Exception as e:
+            self.logger.debug(f"Portal redirect probe unavailable: {e}; checking portal servers")
+        for host in PORTAL_HOSTS:
             try:
-                self.get(i)
-                return i
+                response = self.get(host, timeout=10)
+                if response.headers.get("SRunFlag") is None and "srun_portal" not in response.text:
+                    continue
+                detected_host = self.get_redirect_host(response)
+                if detected_host is None:
+                    continue
+                return detected_host
             except Exception as e:
-                self.logger.info(f"Host {i} {e}")
+                self.logger.debug(f"Portal {host} probe failed: {e}")
         self.logger.error("Failed to get host...")
         exit(-1)
 
@@ -123,7 +158,7 @@ class Manager(Session):
         result: dict = loads(resp.strip(callback + "()"))
         self.logger.debug(result)
         if result.get("suc_msg"):
-            self.logger.success(f'login: {result["suc_msg"]} {self.username} {self.password} {result.get("online_ip")}')
+            self.logger.success(f'login: {result["suc_msg"]} {self.username} {result.get("online_ip")}')
         else:
             self.logger.error(f'{result.get("error")}: {result.get("error_msg")}')
             if "BAS" in result.get("error_msg") or "Nas" in result.get("error_msg"):
