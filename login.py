@@ -14,7 +14,7 @@ from requests import Session
 
 from utils.base import b64encode
 from utils.device import devices
-from utils.hash import md5
+from utils.hash import md5hmac
 from utils.xencode import xencode
 
 AUTH_FILE = "auth.json"
@@ -124,7 +124,7 @@ class Manager(Session):
 
     def get_checksum(self) -> str:
         checksum = self.token + self.username
-        checksum += self.token + md5(self.password, self.token)
+        checksum += self.token + md5hmac(self.password, self.token)
         checksum += self.token + str(self.acid)
         checksum += self.token + self.get_ip()
         checksum += self.token + self.n
@@ -142,7 +142,7 @@ class Manager(Session):
             "callback": callback,
             "action": "login",
             "username": self.username,
-            "password": "{MD5}" + md5(self.password, self.token),
+            "password": "{MD5}" + md5hmac(self.password, self.token),
             'os': device[0],
             'name': device[1],
             "double_stack": "0",
