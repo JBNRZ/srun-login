@@ -48,7 +48,8 @@ class Manager(Session):
             self.acid = 1
         self.token, self.checksum, self.info = None, None, None
 
-    def get_redirect_host(self, response):
+    @staticmethod
+    def get_redirect_host(response):
         urls = [response.url] + [previous.url for previous in reversed(response.history)]
         for tag in compile(r"<meta\b[^>]*>", flags=IGNORECASE).findall(response.text):
             if not compile(r'''http-equiv\s*=\s*["']?refresh\b''', flags=IGNORECASE).search(tag):
@@ -70,55 +71,26 @@ class Manager(Session):
     def get_host(self):
         try:
             response = self.get("http://www.msftconnecttest.com/connecttest.txt", timeout=10)
-            response.raise_for_status()
             host = self.get_redirect_host(response)
             if host:
                 return host
-        except Exception:
-            self.logger.debug("Portal redirect probe unavailable; checking portal servers")
-        reachable = {}
-        online = {}
+        except Exception as e:
+            self.logger.debug(f"Portal redirect probe unavailable: {e}; checking portal servers")
         for host in PORTAL_HOSTS:
             try:
                 response = self.get(host, timeout=10)
-                response.raise_for_status()
+                if response.headers.get("SRunFlag") is None and "srun_portal" not in response.text:
+                    continue
                 detected_host = self.get_redirect_host(response)
                 if detected_host is None:
                     continue
-                if response.headers.get("SRunFlag") is None and "srun_portal" not in response.text:
-                    continue
-                campus = "shaoxing" if urlsplit(detected_host).hostname == "yue.hdu.edu.cn" else "xiasha"
-                reachable.setdefault(campus, detected_host)
-                status = self.get(
-                    detected_host + "/cgi-bin/rad_user_info", headers=headers,
-                    params={"callback": "portal_probe"}, timeout=10
-                )
-                status.raise_for_status()
-                text = status.text.strip().rstrip(";").strip()
-                if text.startswith("portal_probe(") and text.endswith(")"):
-                    text = text[len("portal_probe("):-1]
-                if loads(text).get("error") == "ok":
-                    online.setdefault(campus, detected_host)
-            except Exception:
-                self.logger.debug(f"Portal probe failed: {host}")
-        for candidates in (online, reachable):
-            for campus in ("xiasha", "shaoxing"):
-                if campus in candidates:
-                    return candidates[campus]
+                return detected_host
+            except Exception as e:
+                self.logger.debug(f"Portal {host} probe failed: {e}")
         self.logger.error("Failed to get host...")
         exit(-1)
 
     def get_ip(self) -> str:
-        if urlsplit(self.host).hostname == "yue.hdu.edu.cn":
-            response = self.get(
-                self.host + "/srun_portal_pc", headers=headers,
-                params={"ac_id": self.acid, "theme": "hdu-yue"}, timeout=10
-            )
-            response.raise_for_status()
-            match = compile(r'''\bip\s*:\s*["']([0-9.]+)["']''').search(response.text)
-            if match is None:
-                raise ValueError("Failed to get IP from Shaoxing portal")
-            return match.group(1)
         resp = self.get(self.host + f"/srun_portal_pc", headers=headers).text
         try:
             ip = compile(r'((1\d{2}|25[0-5]|2[0-4]\d|[1-9]?\d)\.){3}(25[0-5]|2[0-4]\d|1\d{2}|[1-9]?\d)').search(
