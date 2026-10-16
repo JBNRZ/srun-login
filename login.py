@@ -22,7 +22,8 @@ INVALID_AUTH_ERROR = "4xx"
 RETRY_DELAY = 2
 PORTAL_HOSTS = [
     "https://login.hdu.edu.cn", "https://portal.hdu.edu.cn",
-    "http://192.168.112.30", "http://192.168.112.97", "https://yue.hdu.edu.cn"
+    "http://192.168.112.30", "http://192.168.112.97",
+    "https://yue.hdu.edu.cn", "http://192.168.121.30"
 ]
 
 headers = {
